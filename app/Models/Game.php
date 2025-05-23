@@ -20,17 +20,17 @@ class Game extends Model
     const TABLE = 'games';
 
     protected $fillable = [
-        'home_team_id','away_team_id','week','home_score','away_score'
+        'home_team_id', 'away_team_id', 'week', 'home_score', 'away_score'
     ];
 
     public function homeTeam(): BelongsTo
     {
-        return $this->belongsTo(Team::class,'home_team_id');
+        return $this->belongsTo(Team::class, 'home_team_id');
     }
 
     public function awayTeam(): BelongsTo
     {
-        return $this->belongsTo(Team::class,'away_team_id');
+        return $this->belongsTo(Team::class, 'away_team_id');
     }
 
     public function isPlayed(): bool

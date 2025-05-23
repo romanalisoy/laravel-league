@@ -16,7 +16,7 @@ class Team extends Model
 {
     const TABLE = 'teams';
 
-    protected $fillable = ['name','strength'];
+    protected $fillable = ['name', 'strength'];
 
     public function homeGames(): HasMany
     {
