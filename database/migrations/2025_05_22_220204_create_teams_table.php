@@ -1,8 +1,10 @@
 <?php
 
 use App\Models\Team;
+use Database\Seeders\LeagueSeeder;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -18,6 +20,11 @@ return new class extends Migration
             $table->integer('strength')->default(50);
             $table->timestamps();
         });
+
+        Artisan::call('db:seed', [
+            '--class' => LeagueSeeder::class,
+            '--force' => true,
+        ]);
     }
 
     /**
