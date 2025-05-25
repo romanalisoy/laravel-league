@@ -4,6 +4,9 @@ namespace App\Services;
 
 use App\Models\Team;
 use App\Models\Game;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 
 /**
@@ -107,7 +110,7 @@ class LeagueService
      */
     public function playAllWeeks(): Collection
     {
-        $games = Game::query()->whereNull('home_score')->get();
+        $games = Game::query()->get();
 
         $games->each(function ($m) {
             $scores = $this->simulateGame($m);
@@ -141,9 +144,9 @@ class LeagueService
      * @param int $id The ID of the game to update.
      * @param int $home The home team's score.
      * @param int $away The away team's score.
-     * @return Game The updated game instance.
+     * @return Builder|EloquentCollection|Model|Builder[] The updated game instance.
      */
-    public function updateGameResult(int $id, int $home, int $away): Game
+    public function updateGameResult(int $id, int $home, int $away): Builder|array|EloquentCollection|Model
     {
         $game = Game::query()->findOrFail($id);
         $game->update(['home_score' => $home, 'away_score' => $away]);

@@ -11,7 +11,7 @@ WORKDIR /var/www
 
 COPY . .
 
-RUN composer install --optimize-autoloader --no-dev
+RUN composer install --optimize-autoloader
 
 RUN cp .env.example .env
 

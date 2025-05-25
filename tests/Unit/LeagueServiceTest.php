@@ -4,8 +4,9 @@ namespace Tests\Unit;
 
 use App\Models\Game;
 use App\Services\LeagueService;
+use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use PHPUnit\Framework\TestCase;
+use Illuminate\Foundation\Testing\TestCase;
 
 class LeagueServiceTest extends TestCase
 {
@@ -16,11 +17,7 @@ class LeagueServiceTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-
-        $this->artisan('migrate');
-        $this->seed();
-
-        $this->service = new LeagueService();
+        $this->service =  $this->app->make(LeagueService::class);
     }
 
     public function test_generate_fixtures_creates_double_round_robin()
@@ -95,5 +92,12 @@ class LeagueServiceTest extends TestCase
     {
         $empty = $this->service->predictions();
         $this->assertTrue($empty->isEmpty());
+    }
+
+    public function createApplication()
+    {
+        $app = require __DIR__.'/../../bootstrap/app.php';
+        $app->make(Kernel::class)->bootstrap();
+        return $app;
     }
 }
