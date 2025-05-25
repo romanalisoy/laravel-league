@@ -28,7 +28,7 @@ jobs:
         run: docker compose up -d --build
 
       - name: Run tests
-        run: docker compose exec app php artisan test --parallel --processes=4
+        run: docker compose exec app php artisan test
 
       - name: Stop compose
         run: docker compose down
