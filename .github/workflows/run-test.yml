@@ -1,0 +1,31 @@
+name: "Run Tests"
+on:
+  push:
+    branches:
+      - main
+
+defaults:
+  run:
+    shell: bash
+env:
+  GITHUB_SHA_LONG: ${{ github.sha }}
+  GITHUB_REF: ${{ github.ref_name }}
+  GH_RUN_ID: ${{ github.run_id }}
+
+jobs:
+  Testing:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.ref_name }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Build compose
+        run: docker-compose up -d --build
+
+      - name: Run tests
+        run: docker-compose exec - exec app php artisan test --parallel --processes=4
+
+      - name: Stop compose
+        run: docker-compose down
