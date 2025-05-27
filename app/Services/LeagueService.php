@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Team;
 use App\Models\Game;
+use App\Repositories\IGameRepository;
+use App\Repositories\ITeamRepository;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
@@ -17,14 +19,18 @@ use Illuminate\Support\Collection;
  */
 class LeagueService
 {
+
     /**
      * LeagueService constructor.
      *
      * Initializes the service and generates fixtures if no games exist in the database.
      */
-    public function __construct()
+    public function __construct(
+        private readonly ITeamRepository $teamRepo,
+        private readonly IGameRepository $gameRepo
+    )
     {
-        if (Game::query()->count() === 0) {
+        if ($this->gameRepo->count() === 0) {
             $this->generateFixtures();
         }
     }
@@ -39,16 +45,17 @@ class LeagueService
      */
     public function generateFixtures(): void
     {
-        // Get Teams
-        $teams = Team::query()->pluck('id')->toArray();
-        if (count($teams) % 2 !== 0) {
-            $teams[] = null;
-        }
-        $n = count($teams);
-        $rounds = ($n - 1) * 2;
-        $order = $teams;
+        $teamIds = $this->teamRepo->pluckIds();
 
+        if (count($teamIds) % 2 !== 0) {
+            $teamIds[] = null;
+        }
+
+        $n = count($teamIds);
+        $rounds = ($n - 1) * 2;
+        $order = $teamIds;
         $fixtures = [];
+
         for ($round = 0; $round < $rounds; $round++) {
             for ($i = 0; $i < $n / 2; $i++) {
                 $home = $order[$i];
@@ -77,7 +84,7 @@ class LeagueService
         }
 
         if (!empty($fixtures)) {
-            Game::query()->insert($fixtures);
+            $this->gameRepo->insertFixtures($fixtures);
         }
     }
 
@@ -90,18 +97,13 @@ class LeagueService
      */
     public function playNextWeek(): Collection
     {
-        $games = Game::query()
-            ->where(
-                'week',
-                Game::query()
-                    ->whereNull('home_score')
-                    ->min('week')
-            )
-            ->get();
+        $nextWeek = $this->gameRepo->minUnplayedWeek();
+        $games = $this->gameRepo->getByWeekWithTeams($nextWeek);
 
-        $games->each(function ($m) {
-            $scores = $this->simulateGame($m);
-            $m->update($scores);
+        $games->each(function ($game) {
+            $scores = $this->simulateGame($game);
+            $this->gameRepo->updateScores($game, $scores);
+            $game->setRawAttributes(array_merge($game->getAttributes(), $scores));
         });
 
         return $games;
@@ -116,11 +118,12 @@ class LeagueService
      */
     public function playAllWeeks(): Collection
     {
-        $games = Game::query()->get();
+        $games = $this->gameRepo->getAllWithTeams();
 
-        $games->each(function ($m) {
-            $scores = $this->simulateGame($m);
-            $m->update($scores);
+        $games->each(function ($game) {
+            $scores = $this->simulateGame($game);
+            $this->gameRepo->updateScores($game, $scores);
+            $game->setRawAttributes(array_merge($game->getAttributes(), $scores));
         });
 
         return $games;
@@ -154,8 +157,16 @@ class LeagueService
      */
     public function updateGameResult(int $id, int $home, int $away): Builder|array|EloquentCollection|Model
     {
-        $game = Game::query()->findOrFail($id);
-        $game->update(['home_score' => $home, 'away_score' => $away]);
+        $game = $this->gameRepo->find($id);
+        $this->gameRepo->updateScores($game, [
+            'home_score' => $home,
+            'away_score' => $away,
+        ]);
+        $game->setRawAttributes(array_merge($game->getAttributes(), [
+            'home_score' => $home,
+            'away_score' => $away,
+        ]));
+
         return $game;
     }
 
@@ -168,57 +179,11 @@ class LeagueService
      */
     public function standings(): Collection
     {
-        $out = collect();
-        Team::all()->each(function ($team) use (&$out) {
-            $played = Game::query()->where(function ($q) use ($team) {
-                $q->where('home_team_id', $team->id)
-                    ->whereNotNull('home_score');
-            })
-                ->orWhere(function ($q) use ($team) {
-                    $q->where('away_team_id', $team->id)
-                        ->whereNotNull('away_score');
-                })->get();
-
-            $stats = [
-                'team_id' => $team->id,
-                'team_name' => $team->name,
-                'played' => $played->count(),
-                'won' => 0,
-                'drawn' => 0,
-                'lost' => 0,
-                'for' => 0,
-                'against' => 0,
-                'gd' => 0,
-                'points' => 0,
-            ];
-
-            foreach ($played as $m) {
-                if ($m->home_team_id === $team->id) {
-                    $f = $m->home_score;
-                    $ag = $m->away_score;
-                } else {
-                    $f = $m->away_score;
-                    $ag = $m->home_score;
-                }
-                $stats['for'] += $f;
-                $stats['against'] += $ag;
-
-                if ($f > $ag) {
-                    $stats['won']++;
-                    $stats['points'] += 3;
-                } elseif ($f === $ag) {
-                    $stats['drawn']++;
-                    $stats['points'] += 1;
-                } else {
-                    $stats['lost']++;
-                }
-            }
-
-            $stats['gd'] = $stats['for'] - $stats['against'];
-            $out->push((object)$stats);
-        });
-
-        return $out
+        $teams = $this->teamRepo->allWithGames();
+        return $teams->map(function (Team $team) {
+            $stats = $team->calculateStats();
+            return (object)$stats;
+        })
             ->sortByDesc('points')
             ->sortByDesc('gd')
             ->values();
@@ -235,16 +200,16 @@ class LeagueService
      */
     public function predictions(int $minWeek = 4): Collection
     {
-        $current = Game::query()->whereNotNull('home_score')->max('week') ?? 0;
-        if ($current < $minWeek) {
+        $currentWeek = $this->gameRepo->maxPlayedWeek() ?? 0;
+        if ($currentWeek < $minWeek) {
             return collect();
         }
 
-        $teams = Team::all();
+        $teams = $this->teamRepo->all();
         $total = $teams->sum('strength');
 
         return $teams->map(fn($t) => (object)[
-            'team_id' => $t->id,
+            'team_id'     => $t->id,
             'probability' => round($t->strength / $total * 100, 2),
         ]);
     }
@@ -258,9 +223,6 @@ class LeagueService
      */
     public function fixtures(): Collection
     {
-        return Game::query()
-            ->with(['homeTeam', 'awayTeam'])
-            ->orderBy('week')
-            ->get();
+        return $this->gameRepo->getAllWithTeams();
     }
 }
