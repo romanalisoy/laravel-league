@@ -46,9 +46,9 @@ class LeagueService
         }
         $n = count($teams);
         $rounds = ($n - 1) * 2;
-        $half = $n - 1;
         $order = $teams;
 
+        $fixtures = [];
         for ($round = 0; $round < $rounds; $round++) {
             for ($i = 0; $i < $n / 2; $i++) {
                 $home = $order[$i];
@@ -58,20 +58,26 @@ class LeagueService
                     continue;
                 }
 
-                if ($round >= $half) {
+                if ($round >= ($n - 1)) {
                     [$home, $away] = [$away, $home];
                 }
 
-                Game::query()->create([
+                $fixtures[] = [
                     'week' => $round + 1,
                     'home_team_id' => $home,
                     'away_team_id' => $away,
-                ]);
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
             }
 
             $slice = array_slice($order, 1, -1);
             array_unshift($slice, array_pop($order));
             $order = array_merge([$order[0]], $slice);
+        }
+
+        if (!empty($fixtures)) {
+            Game::query()->insert($fixtures);
         }
     }
 
