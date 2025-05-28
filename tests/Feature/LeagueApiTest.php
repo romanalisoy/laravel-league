@@ -59,6 +59,7 @@ class LeagueApiTest extends TestCase
         $resp = $this->postJson('/api/league/play-all');
         $resp->assertStatus(200);
         $resp->assertJsonCount(12, 'data');
+        // in the feature test, we assume that all games have been played. Not use the mocked data.
         $this->assertFalse(Game::query()->whereNull('home_score')->exists());
     }
 
